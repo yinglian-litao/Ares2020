@@ -397,11 +397,14 @@ class Agent(object):
                 failed_connections += 1
                 self.update_consecutive_failed_connections(failed_connections)
                 self.log("Failed to contact %s [%s/%s]" % (config.SERVER, failed_connections, config.MAX_FAILED_CONNECTIONS))
-                if failed_connections > config.MAX_FAILED_CONNECTIONS:
+                if config.MAX_FAILED_CONNECTIONS < 1:
+                    time.sleep(config.HELLO_INTERVAL)
+                elif failed_connections > config.MAX_FAILED_CONNECTIONS:
                     self.silent = True
                     self.clean()
                     self.exit()
-                time.sleep(config.HELLO_INTERVAL)
+                else:
+                    time.sleep(config.HELLO_INTERVAL)
 
 
 def main():
